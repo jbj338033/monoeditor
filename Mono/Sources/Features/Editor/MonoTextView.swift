@@ -5,12 +5,14 @@ final class MonoTextView: NSView {
     private let gutterView: GutterView
     private let scrollView: NSScrollView
     private let textView: NSTextView
+    private let highlighter: SyntaxHighlighter
 
     var text: String {
         get { textView.string }
         set {
             textView.string = newValue
             gutterView.needsDisplay = true
+            highlighter.textDidChange()
         }
     }
 
@@ -20,6 +22,7 @@ final class MonoTextView: NSView {
         gutterView = GutterView()
         scrollView = NSScrollView()
         textView = NSTextView()
+        highlighter = SyntaxHighlighter()
 
         super.init(frame: frameRect)
         setupGutter()
@@ -106,12 +109,14 @@ final class MonoTextView: NSView {
             object: scrollView.contentView,
             queue: .main
         ) { [weak self] _ in
-            self?.gutterView.needsDisplay = true
+            Task { @MainActor in
+                self?.gutterView.needsDisplay = true
+            }
         }
     }
 
     func configure(for language: Language?) {
-        // TODO: 언어별 하이라이터 설정
+        highlighter.configure(textView: textView, language: language)
     }
 
     override func layout() {
@@ -127,6 +132,7 @@ extension MonoTextView: NSTextViewDelegate {
     func textDidChange(_ notification: Notification) {
         onTextChange?(textView.string)
         gutterView.needsDisplay = true
+        highlighter.textDidChange()
     }
 }
 

@@ -55,6 +55,27 @@ enum SyntaxColors {
     }
 }
 
+struct SyntaxTheme {
+    static let `default` = SyntaxTheme()
+
+    let defaultColor = SyntaxColors.NS.plain
+
+    func color(for tokenName: String) -> NSColor? {
+        // TreeSitter 토큰 이름 매핑
+        if tokenName.hasPrefix("keyword") { return SyntaxColors.NS.keyword }
+        if tokenName.hasPrefix("string") { return SyntaxColors.NS.string }
+        if tokenName.hasPrefix("number") || tokenName.hasPrefix("constant.numeric") { return SyntaxColors.NS.number }
+        if tokenName.hasPrefix("comment") { return SyntaxColors.NS.comment }
+        if tokenName.hasPrefix("function") || tokenName.hasPrefix("method") { return SyntaxColors.NS.function }
+        if tokenName.hasPrefix("type") || tokenName.hasPrefix("class") || tokenName.hasPrefix("struct") { return SyntaxColors.NS.type }
+        if tokenName.hasPrefix("variable") || tokenName.hasPrefix("identifier") { return SyntaxColors.NS.variable }
+        if tokenName.hasPrefix("property") || tokenName.hasPrefix("attribute") { return SyntaxColors.NS.property }
+        if tokenName.hasPrefix("operator") { return SyntaxColors.NS.operator }
+        if tokenName.hasPrefix("punctuation") { return SyntaxColors.NS.punctuation }
+        return nil
+    }
+}
+
 enum TerminalColors {
     static let black = Color(hex: "#1E1E1E")
     static let red = Color(hex: "#CD3131")
