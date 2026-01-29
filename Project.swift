@@ -39,7 +39,6 @@ let project = Project(
                 "Mono/Resources",
             ],
             dependencies: [
-                .external(name: "Neon"),
                 .external(name: "SwiftTerm"),
             ]
         ),

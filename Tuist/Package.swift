@@ -12,7 +12,6 @@ import PackageDescription
 let package = Package(
     name: "Mono",
     dependencies: [
-        .package(url: "https://github.com/ChimeHQ/Neon", branch: "main"),
         .package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.2.0"),
     ]
 )
