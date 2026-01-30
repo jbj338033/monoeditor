@@ -74,15 +74,24 @@ struct EditorContainer: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        if let tab = appState.activeTab {
-            if tab.hasLoadError {
-                FileLoadErrorView(tab: tab)
+        ZStack(alignment: .top) {
+            if let tab = appState.activeTab {
+                if tab.hasLoadError {
+                    FileLoadErrorView(tab: tab)
+                } else {
+                    EditorView(tab: tab)
+                }
             } else {
-                EditorView(tab: tab)
+                EmptyEditorView()
             }
-        } else {
-            EmptyEditorView()
+
+            if appState.isGoToLineVisible {
+                GoToLineView()
+                    .padding(.top, Spacing.md)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
+        .animation(.easeOut(duration: AnimationDuration.fast), value: appState.isGoToLineVisible)
     }
 }
 
