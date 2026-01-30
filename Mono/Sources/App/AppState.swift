@@ -25,6 +25,19 @@ final class AppState {
     var isSettingsVisible: Bool = false
     var isFindReplaceVisible: Bool = false
 
+    var findQuery: String = ""
+    var findMatchCount: Int = 0
+    var findCurrentMatch: Int = 0
+    var replaceQuery: String = ""
+    var findReplaceAction: FindReplaceAction?
+
+    enum FindReplaceAction {
+        case find
+        case findNext
+        case replace
+        case replaceAll
+    }
+
     private var tabHistory: [UUID] = []
 
     var currentError: AppError?
@@ -124,6 +137,7 @@ final class AppState {
     func setProject(_ url: URL?) {
         currentProject = url
         closeAllTabs()
+        tabHistory.removeAll()
     }
 
     func saveActiveTab() async throws {
@@ -201,6 +215,35 @@ final class AppState {
 
     func toggleFindReplace() {
         isFindReplaceVisible.toggle()
+        if !isFindReplaceVisible {
+            findQuery = ""
+            replaceQuery = ""
+            findMatchCount = 0
+            findCurrentMatch = 0
+            findReplaceAction = nil
+        }
+    }
+
+    func updateFindQuery(_ query: String) {
+        findQuery = query
+        findReplaceAction = .find
+    }
+
+    func triggerFindNext() {
+        findReplaceAction = .findNext
+    }
+
+    func triggerReplace() {
+        findReplaceAction = .replace
+    }
+
+    func triggerReplaceAll() {
+        findReplaceAction = .replaceAll
+    }
+
+    func updateFindResults(matchCount: Int, currentMatch: Int) {
+        findMatchCount = matchCount
+        findCurrentMatch = currentMatch
     }
 
     func recordTabVisit(_ id: UUID) {

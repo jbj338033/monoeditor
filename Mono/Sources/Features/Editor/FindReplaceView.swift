@@ -2,37 +2,43 @@ import SwiftUI
 
 struct FindReplaceView: View {
     @Environment(AppState.self) private var appState
-    @State private var findText: String = ""
-    @State private var replaceText: String = ""
-    @State private var matchCount: Int = 0
-    @State private var currentMatch: Int = 0
     @FocusState private var findFocused: Bool
 
-    var onFind: ((String) -> Int)?
-    var onReplace: ((String, String) -> Void)?
-    var onReplaceAll: ((String, String) -> Int)?
-
     var body: some View {
+        @Bindable var appState = appState
+
         VStack(spacing: Spacing.sm) {
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(ThemeColors.textSecondary)
                     .frame(width: 16)
 
-                TextField("Find", text: $findText)
+                TextField("Find", text: $appState.findQuery)
                     .textFieldStyle(.plain)
                     .font(Typography.ui)
                     .focused($findFocused)
-                    .onChange(of: findText) { _, newValue in
-                        matchCount = onFind?(newValue) ?? 0
-                        currentMatch = matchCount > 0 ? 1 : 0
+                    .onChange(of: appState.findQuery) { _, newValue in
+                        appState.updateFindQuery(newValue)
+                    }
+                    .onSubmit {
+                        appState.triggerFindNext()
                     }
 
-                if !findText.isEmpty {
-                    Text("\(currentMatch)/\(matchCount)")
+                if !appState.findQuery.isEmpty {
+                    Text("\(appState.findCurrentMatch)/\(appState.findMatchCount)")
                         .font(Typography.uiSmall)
                         .foregroundStyle(ThemeColors.textMuted)
                         .frame(width: 50)
+
+                    Button {
+                        appState.triggerFindNext()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10))
+                            .foregroundStyle(ThemeColors.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Find Next (Enter)")
                 }
 
                 Button {
@@ -50,13 +56,13 @@ struct FindReplaceView: View {
                     .foregroundStyle(ThemeColors.textSecondary)
                     .frame(width: 16)
 
-                TextField("Replace", text: $replaceText)
+                TextField("Replace", text: $appState.replaceQuery)
                     .textFieldStyle(.plain)
                     .font(Typography.ui)
 
                 HStack(spacing: Spacing.xs) {
                     Button("Replace") {
-                        onReplace?(findText, replaceText)
+                        appState.triggerReplace()
                     }
                     .buttonStyle(.plain)
                     .font(Typography.uiSmall)
@@ -65,13 +71,10 @@ struct FindReplaceView: View {
                     .padding(.vertical, Spacing.xs)
                     .background(ThemeColors.backgroundTertiary)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .disabled(findText.isEmpty)
+                    .disabled(appState.findQuery.isEmpty)
 
                     Button("All") {
-                        if let count = onReplaceAll?(findText, replaceText) {
-                            matchCount = 0
-                            currentMatch = 0
-                        }
+                        appState.triggerReplaceAll()
                     }
                     .buttonStyle(.plain)
                     .font(Typography.uiSmall)
@@ -80,7 +83,7 @@ struct FindReplaceView: View {
                     .padding(.vertical, Spacing.xs)
                     .background(ThemeColors.backgroundTertiary)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .disabled(findText.isEmpty)
+                    .disabled(appState.findQuery.isEmpty)
                 }
             }
         }
