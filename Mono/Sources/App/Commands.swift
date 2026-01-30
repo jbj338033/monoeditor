@@ -13,21 +13,30 @@ struct MonoCommands: Commands {
             Divider()
 
             Button("New File") {
-                // TODO: Implement new file
+                appState.triggerNewFile()
             }
             .keyboardShortcut("n", modifiers: [.command])
+            .disabled(appState.currentProject == nil)
         }
 
         CommandGroup(replacing: .saveItem) {
             Button("Save") {
-                // TODO: Implement save
+                Task {
+                    do {
+                        try await appState.saveActiveTab()
+                    } catch {
+                        showError(error, title: "Save Failed")
+                    }
+                }
             }
             .keyboardShortcut("s", modifiers: [.command])
+            .disabled(appState.activeTab == nil)
 
             Button("Save As...") {
-                // TODO: Implement save as
+                saveAs()
             }
             .keyboardShortcut("s", modifiers: [.command, .shift])
+            .disabled(appState.activeTab == nil)
         }
 
         CommandMenu("View") {
@@ -48,9 +57,10 @@ struct MonoCommands: Commands {
 
         CommandGroup(replacing: .textEditing) {
             Button("Find in File") {
-                // TODO: Implement find
+                appState.toggleFindBar()
             }
             .keyboardShortcut("f", modifiers: [.command])
+            .disabled(appState.activeTab == nil)
         }
     }
 
@@ -67,5 +77,38 @@ struct MonoCommands: Commands {
                 appState.setProject(url)
             }
         }
+    }
+
+    private func saveAs() {
+        guard let tab = appState.activeTab else { return }
+
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = tab.name
+        panel.canCreateDirectories = true
+        panel.message = "Save file as"
+
+        if let project = appState.currentProject {
+            panel.directoryURL = project
+        }
+
+        if panel.runModal() == .OK, let url = panel.url {
+            Task {
+                do {
+                    try await appState.saveActiveTabAs(to: url)
+                } catch {
+                    showError(error)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func showError(_ error: Error, title: String = "Error") {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }

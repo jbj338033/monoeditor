@@ -12,6 +12,15 @@ final class AppState {
     var isSidebarVisible: Bool = true
     var isTerminalVisible: Bool = false
 
+    var cursorLine: Int = 1
+    var cursorColumn: Int = 1
+
+    var isFindBarVisible: Bool = false
+    var shouldTriggerNewFile: Bool = false
+
+    var currentError: AppError?
+    var showErrorAlert: Bool = false
+
     private var fileService: FileService { FileService.shared }
 
     var activeTab: EditorTab? {
@@ -28,12 +37,20 @@ final class AppState {
 
         do {
             tab.content = try await fileService.readFile(at: url)
+            tab.loadError = nil
         } catch {
-            tab.content = "// Error loading file: \(error.localizedDescription)"
+            tab.content = ""
+            tab.loadError = error.localizedDescription
+            showError(.fileLoadFailed(url: url, reason: error.localizedDescription))
         }
 
         openTabs.append(tab)
         activeTabId = tab.id
+    }
+
+    func showError(_ error: AppError) {
+        currentError = error
+        showErrorAlert = true
     }
 
     func closeTab(_ id: UUID) {
@@ -61,5 +78,38 @@ final class AppState {
         let tab = openTabs[index]
         try await fileService.writeFile(tab.content, to: tab.url)
         openTabs[index].isModified = false
+    }
+
+    func saveActiveTabAs(to url: URL) async throws {
+        guard let index = openTabs.firstIndex(where: { $0.id == activeTabId }) else {
+            return
+        }
+
+        let tab = openTabs[index]
+        try await fileService.writeFile(tab.content, to: url)
+
+        var newTab = EditorTab(url: url)
+        newTab.content = tab.content
+        openTabs[index] = newTab
+        activeTabId = newTab.id
+    }
+
+    func createNewFile(in directory: URL, name: String) async throws {
+        let url = try await fileService.createFile(at: directory, name: name)
+        await openFile(at: url)
+    }
+
+    func updateCursorPosition(line: Int, column: Int) {
+        cursorLine = line
+        cursorColumn = column
+    }
+
+    func toggleFindBar() {
+        isFindBarVisible.toggle()
+    }
+
+    func triggerNewFile() {
+        guard currentProject != nil else { return }
+        shouldTriggerNewFile = true
     }
 }
