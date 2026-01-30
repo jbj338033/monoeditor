@@ -123,6 +123,22 @@ struct MonoCommands: Commands {
         }
 
         CommandMenu("Tab") {
+            Button("Close Tab") {
+                if let activeId = appState.activeTabId {
+                    appState.closeTab(activeId)
+                }
+            }
+            .keyboardShortcut("w", modifiers: [.command])
+            .disabled(appState.activeTab == nil)
+
+            Button("Close All Tabs") {
+                appState.closeAllTabs()
+            }
+            .keyboardShortcut("w", modifiers: [.command, .shift])
+            .disabled(appState.openTabs.isEmpty)
+
+            Divider()
+
             Button("Next Recent Tab") {
                 appState.cycleToNextRecentTab()
             }
