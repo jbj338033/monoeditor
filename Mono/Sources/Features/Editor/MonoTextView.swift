@@ -4,7 +4,7 @@ import AppKit
 final class MonoTextView: NSView {
     private let gutterView: GutterView
     private let scrollView: NSScrollView
-    private let textView: NSTextView
+    private let textView: HighlightingTextView
     private let highlighter: SyntaxHighlighter
 
     private nonisolated(unsafe) var boundsObserver: NSObjectProtocol?
@@ -24,7 +24,7 @@ final class MonoTextView: NSView {
     override init(frame frameRect: NSRect) {
         gutterView = GutterView()
         scrollView = NSScrollView()
-        textView = NSTextView()
+        textView = HighlightingTextView()
         highlighter = SyntaxHighlighter()
 
         super.init(frame: frameRect)
@@ -132,6 +132,28 @@ final class MonoTextView: NSView {
         textView.performTextFinderAction(NSTextFinder.Action.showFindInterface)
     }
 
+    func goToLine(_ lineNumber: Int) {
+        let text = textView.string as NSString
+        var currentLine = 1
+        var index = 0
+
+        while index < text.length && currentLine < lineNumber {
+            let lineRange = text.lineRange(for: NSRange(location: index, length: 0))
+            currentLine += 1
+            index = NSMaxRange(lineRange)
+        }
+
+        let targetRange = NSRange(location: min(index, text.length), length: 0)
+        textView.setSelectedRange(targetRange)
+        textView.scrollRangeToVisible(targetRange)
+        window?.makeFirstResponder(textView)
+    }
+
+    func updateFontSize(_ size: EditorFontSize) {
+        textView.font = size.font
+        gutterView.needsDisplay = true
+    }
+
     override func layout() {
         super.layout()
         textView.textContainer?.containerSize = NSSize(
@@ -151,6 +173,36 @@ extension MonoTextView: NSTextViewDelegate {
     func textViewDidChangeSelection(_ notification: Notification) {
         let (line, column) = calculateCursorPosition()
         onCursorChange?(line, column)
+        textView.needsDisplay = true
+    }
+
+    func textView(
+        _ textView: NSTextView,
+        shouldChangeTextIn range: NSRange,
+        replacementString text: String?
+    ) -> Bool {
+        guard let text = text, text == "\n" else { return true }
+
+        let nsString = textView.string as NSString
+        let lineRange = nsString.lineRange(for: NSRange(location: range.location, length: 0))
+        let currentLine = nsString.substring(with: lineRange)
+
+        var indent = ""
+        for char in currentLine {
+            if char == " " || char == "\t" {
+                indent.append(char)
+            } else {
+                break
+            }
+        }
+
+        let trimmed = currentLine.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasSuffix("{") || trimmed.hasSuffix(":") {
+            indent += "    "
+        }
+
+        textView.insertText("\n" + indent, replacementRange: range)
+        return false
     }
 
     private func calculateCursorPosition() -> (line: Int, column: Int) {
@@ -240,5 +292,31 @@ private final class GutterView: NSView {
             lineNumber += 1
             index = NSMaxRange(lineRange)
         }
+    }
+}
+
+private final class HighlightingTextView: NSTextView {
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        drawCurrentLineHighlight()
+    }
+
+    private func drawCurrentLineHighlight() {
+        guard let layoutManager = layoutManager,
+              let textContainer = textContainer else { return }
+
+        let selectedRange = selectedRange()
+        let text = string as NSString
+
+        guard text.length > 0, selectedRange.location <= text.length else { return }
+
+        let lineRange = text.lineRange(for: NSRange(location: selectedRange.location, length: 0))
+        let glyphRange = layoutManager.glyphRange(forCharacterRange: lineRange, actualCharacterRange: nil)
+        var lineRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+        lineRect.origin.x = 0
+        lineRect.size.width = bounds.width
+
+        ThemeColors.NS.currentLine.setFill()
+        lineRect.fill()
     }
 }
