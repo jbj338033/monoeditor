@@ -20,6 +20,7 @@ final class MonoTextView: NSView {
 
     var onTextChange: ((String) -> Void)?
     var onCursorChange: ((Int, Int) -> Void)?
+    var currentLanguage: Language?
 
     override init(frame frameRect: NSRect) {
         gutterView = GutterView()
@@ -125,6 +126,8 @@ final class MonoTextView: NSView {
     }
 
     func configure(for language: Language?) {
+        currentLanguage = language
+        textView.language = language
         highlighter.configure(textView: textView, language: language)
     }
 
@@ -296,9 +299,15 @@ private final class GutterView: NSView {
 }
 
 private final class HighlightingTextView: NSTextView {
+    var language: Language?
+    private let autoPairs: [String: String] = [
+        "(": ")", "[": "]", "{": "}", "\"": "\"", "'": "'"
+    ]
+
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         drawCurrentLineHighlight()
+        drawIndentGuides(in: rect)
     }
 
     private func drawCurrentLineHighlight() {
@@ -318,5 +327,203 @@ private final class HighlightingTextView: NSTextView {
 
         ThemeColors.NS.currentLine.setFill()
         lineRect.fill()
+    }
+
+    private func drawIndentGuides(in rect: NSRect) {
+        guard let layoutManager = layoutManager,
+              let textContainer = textContainer,
+              let font = font else { return }
+
+        let tabWidth: CGFloat = 4
+        let charWidth = NSString(" ").size(withAttributes: [.font: font]).width
+        let indentWidth = charWidth * tabWidth
+
+        let guideColor = ThemeColors.NS.textMuted.withAlphaComponent(0.2)
+        guideColor.setStroke()
+
+        let path = NSBezierPath()
+        path.lineWidth = 1
+
+        let text = string as NSString
+        let visibleGlyphRange = layoutManager.glyphRange(forBoundingRect: rect, in: textContainer)
+        let visibleCharRange = layoutManager.characterRange(forGlyphRange: visibleGlyphRange, actualGlyphRange: nil)
+
+        var index = visibleCharRange.location
+        while index < NSMaxRange(visibleCharRange) && index < text.length {
+            let lineRange = text.lineRange(for: NSRange(location: index, length: 0))
+            let line = text.substring(with: lineRange)
+
+            var indentLevel = 0
+            for char in line {
+                if char == " " { indentLevel += 1 }
+                else if char == "\t" { indentLevel += Int(tabWidth) }
+                else { break }
+            }
+
+            let glyphRange = layoutManager.glyphRange(forCharacterRange: lineRange, actualCharacterRange: nil)
+            let lineRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+
+            let guides = indentLevel / Int(tabWidth)
+            for i in 1..<guides {
+                let x = CGFloat(i) * indentWidth + textContainerInset.width
+                path.move(to: NSPoint(x: x, y: lineRect.origin.y))
+                path.line(to: NSPoint(x: x, y: lineRect.origin.y + lineRect.height))
+            }
+
+            index = NSMaxRange(lineRange)
+        }
+
+        path.stroke()
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let key = event.charactersIgnoringModifiers ?? ""
+
+        if flags == .command {
+            switch key {
+            case "d": duplicateLine(); return true
+            case "l": selectLine(); return true
+            case "/": toggleComment(); return true
+            default: break
+            }
+        }
+
+        if flags == [.command, .shift] {
+            switch key {
+            case "k", "K": deleteLine(); return true
+            case "\r": insertLineAbove(); return true
+            default: break
+            }
+        }
+
+        if flags == .command && key == "\r" {
+            insertLineBelow()
+            return true
+        }
+
+        if flags == .option {
+            switch event.keyCode {
+            case 126: moveLineUp(); return true
+            case 125: moveLineDown(); return true
+            default: break
+            }
+        }
+
+        return super.performKeyEquivalent(with: event)
+    }
+
+    override func insertText(_ string: Any, replacementRange: NSRange) {
+        guard let str = string as? String, str.count == 1,
+              let closing = autoPairs[str] else {
+            super.insertText(string, replacementRange: replacementRange)
+            return
+        }
+
+        let range = replacementRange.location == NSNotFound ? selectedRange() : replacementRange
+        super.insertText(str + closing, replacementRange: range)
+        setSelectedRange(NSRange(location: range.location + 1, length: 0))
+    }
+
+    private func duplicateLine() {
+        let text = string as NSString
+        let range = selectedRange()
+        let lineRange = text.lineRange(for: range)
+        let lineContent = text.substring(with: lineRange)
+        let insertion = lineContent.hasSuffix("\n") ? lineContent : lineContent + "\n"
+        insertText(insertion, replacementRange: NSRange(location: NSMaxRange(lineRange), length: 0))
+        setSelectedRange(NSRange(location: NSMaxRange(lineRange) + range.location - lineRange.location, length: range.length))
+    }
+
+    private func deleteLine() {
+        let text = string as NSString
+        let lineRange = text.lineRange(for: selectedRange())
+        insertText("", replacementRange: lineRange)
+    }
+
+    private func selectLine() {
+        let text = string as NSString
+        let lineRange = text.lineRange(for: selectedRange())
+        setSelectedRange(lineRange)
+    }
+
+    private func insertLineBelow() {
+        let text = string as NSString
+        let lineRange = text.lineRange(for: selectedRange())
+        let endOfLine = NSMaxRange(lineRange) - (text.substring(with: lineRange).hasSuffix("\n") ? 1 : 0)
+        setSelectedRange(NSRange(location: endOfLine, length: 0))
+        insertText("\n", replacementRange: selectedRange())
+    }
+
+    private func insertLineAbove() {
+        let text = string as NSString
+        let lineRange = text.lineRange(for: selectedRange())
+        setSelectedRange(NSRange(location: lineRange.location, length: 0))
+        insertText("\n", replacementRange: selectedRange())
+        setSelectedRange(NSRange(location: lineRange.location, length: 0))
+    }
+
+    private func moveLineUp() {
+        let text = string as NSString
+        guard text.length > 0 else { return }
+        let currentRange = selectedRange()
+        let lineRange = text.lineRange(for: currentRange)
+        guard lineRange.location > 0 else { return }
+
+        let prevLineRange = text.lineRange(for: NSRange(location: lineRange.location - 1, length: 0))
+        let currentLine = text.substring(with: lineRange)
+        let prevLine = text.substring(with: prevLineRange)
+
+        let combined = currentLine + (currentLine.hasSuffix("\n") ? "" : "\n") +
+                       (prevLine.hasSuffix("\n") ? String(prevLine.dropLast()) : prevLine) +
+                       (NSMaxRange(lineRange) < text.length ? "\n" : "")
+
+        let fullRange = NSRange(location: prevLineRange.location, length: NSMaxRange(lineRange) - prevLineRange.location)
+        insertText(combined.hasSuffix("\n") && NSMaxRange(lineRange) >= text.length ? String(combined.dropLast()) : combined, replacementRange: fullRange)
+        setSelectedRange(NSRange(location: prevLineRange.location + currentRange.location - lineRange.location, length: currentRange.length))
+    }
+
+    private func moveLineDown() {
+        let text = string as NSString
+        guard text.length > 0 else { return }
+        let currentRange = selectedRange()
+        let lineRange = text.lineRange(for: currentRange)
+        guard NSMaxRange(lineRange) < text.length else { return }
+
+        let nextLineRange = text.lineRange(for: NSRange(location: NSMaxRange(lineRange), length: 0))
+        let currentLine = text.substring(with: lineRange)
+        let nextLine = text.substring(with: nextLineRange)
+
+        let combined = (nextLine.hasSuffix("\n") ? String(nextLine.dropLast()) : nextLine) + "\n" + currentLine
+
+        let fullRange = NSRange(location: lineRange.location, length: NSMaxRange(nextLineRange) - lineRange.location)
+        insertText(combined.hasSuffix("\n") ? String(combined.dropLast()) : combined, replacementRange: fullRange)
+        let newLocation = lineRange.location + nextLineRange.length
+        setSelectedRange(NSRange(location: newLocation + currentRange.location - lineRange.location, length: currentRange.length))
+    }
+
+    private func toggleComment() {
+        guard let prefix = language?.lineCommentPrefix else { return }
+        let text = string as NSString
+        let range = selectedRange()
+        let lineRange = text.lineRange(for: range)
+        let line = text.substring(with: lineRange)
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+        if trimmed.hasPrefix(prefix) {
+            if let prefixRange = line.range(of: prefix + " ") {
+                let nsRange = NSRange(prefixRange, in: line)
+                let removeRange = NSRange(location: lineRange.location + nsRange.location, length: nsRange.length)
+                insertText("", replacementRange: removeRange)
+            } else if let prefixRange = line.range(of: prefix) {
+                let nsRange = NSRange(prefixRange, in: line)
+                let removeRange = NSRange(location: lineRange.location + nsRange.location, length: nsRange.length)
+                insertText("", replacementRange: removeRange)
+            }
+        } else {
+            let indent = line.prefix(while: { $0 == " " || $0 == "\t" })
+            let insertLocation = lineRange.location + indent.count
+            insertText(prefix + " ", replacementRange: NSRange(location: insertLocation, length: 0))
+        }
     }
 }
