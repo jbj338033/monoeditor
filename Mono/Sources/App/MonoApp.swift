@@ -8,19 +8,7 @@ struct MonoApp: App {
         WindowGroup {
             ContentView()
                 .environment(appState)
-                .toolbar {
-                    ToolbarItem(placement: .navigation) {
-                        HStack(spacing: Spacing.sm) {
-                            Image(systemName: Icons.folder)
-                                .foregroundStyle(ThemeColors.textSecondary)
-                            if let project = appState.currentProject {
-                                Text(project.lastPathComponent)
-                                    .font(Typography.uiBold)
-                                    .foregroundStyle(ThemeColors.textPrimary)
-                            }
-                        }
-                    }
-                }
+                .navigationTitle(appState.currentProject?.lastPathComponent ?? "")
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified)

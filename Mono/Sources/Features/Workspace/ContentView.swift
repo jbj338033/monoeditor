@@ -4,6 +4,8 @@ struct ContentView: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
+        @Bindable var appState = appState
+
         Group {
             if appState.currentProject != nil {
                 MainEditorLayout()
@@ -16,6 +18,18 @@ struct ContentView: View {
             minHeight: Dimensions.windowMinHeight
         )
         .background(ThemeColors.backgroundPrimary)
+        .alert(
+            isPresented: $appState.showErrorAlert,
+            error: appState.currentError
+        ) { _ in
+            Button("OK", role: .cancel) {
+                appState.currentError = nil
+            }
+        } message: { error in
+            if let suggestion = error.recoverySuggestion {
+                Text(suggestion)
+            }
+        }
     }
 }
 
@@ -41,7 +55,7 @@ struct MainEditorLayout: View {
 
                 if appState.isTerminalVisible {
                     Divider()
-                    TerminalView()
+                    TerminalContainerView()
                         .frame(
                             minHeight: Dimensions.terminalMinHeight,
                             idealHeight: appState.terminalHeight,
@@ -61,10 +75,46 @@ struct EditorContainer: View {
 
     var body: some View {
         if let tab = appState.activeTab {
-            EditorView(tab: tab)
+            if tab.hasLoadError {
+                FileLoadErrorView(tab: tab)
+            } else {
+                EditorView(tab: tab)
+            }
         } else {
             EmptyEditorView()
         }
+    }
+}
+
+struct FileLoadErrorView: View {
+    let tab: EditorTab
+
+    var body: some View {
+        VStack(spacing: Spacing.lg) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 48, weight: .thin))
+                .foregroundStyle(ThemeColors.error)
+
+            Text("Failed to load file")
+                .font(Typography.ui)
+                .foregroundStyle(ThemeColors.textPrimary)
+
+            Text(tab.loadError ?? "Unknown error")
+                .font(Typography.uiSmall)
+                .foregroundStyle(ThemeColors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Spacing.xl)
+
+            Text(tab.url.path)
+                .font(Typography.uiSmall)
+                .foregroundStyle(ThemeColors.textMuted)
+                .lineLimit(2)
+                .truncationMode(.middle)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(ThemeColors.backgroundPrimary)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Error loading \(tab.name): \(tab.loadError ?? "Unknown error")")
     }
 }
 
