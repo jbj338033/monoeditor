@@ -6,18 +6,41 @@ struct ContentView: View {
     var body: some View {
         @Bindable var appState = appState
 
-        Group {
-            if appState.currentProject != nil {
-                MainEditorLayout()
-            } else {
-                WelcomeView()
+        ZStack {
+            Group {
+                if appState.currentProject != nil {
+                    MainEditorLayout()
+                } else {
+                    WelcomeView()
+                }
+            }
+            .frame(
+                minWidth: Dimensions.windowMinWidth,
+                minHeight: Dimensions.windowMinHeight
+            )
+            .background(ThemeColors.backgroundPrimary)
+
+            if appState.isQuickOpenVisible {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture { appState.toggleQuickOpen() }
+                QuickOpenView()
+            }
+
+            if appState.isProjectSearchVisible {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture { appState.toggleProjectSearch() }
+                ProjectSearchView()
+            }
+
+            if appState.isSettingsVisible {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture { appState.toggleSettings() }
+                SettingsView()
             }
         }
-        .frame(
-            minWidth: Dimensions.windowMinWidth,
-            minHeight: Dimensions.windowMinHeight
-        )
-        .background(ThemeColors.backgroundPrimary)
         .alert(
             isPresented: $appState.showErrorAlert,
             error: appState.currentError
@@ -74,24 +97,37 @@ struct EditorContainer: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        ZStack(alignment: .top) {
+        VStack(spacing: 0) {
             if let tab = appState.activeTab {
-                if tab.hasLoadError {
-                    FileLoadErrorView(tab: tab)
-                } else {
-                    EditorView(tab: tab)
-                }
-            } else {
-                EmptyEditorView()
+                BreadcrumbView(url: tab.url, projectRoot: appState.currentProject)
             }
 
-            if appState.isGoToLineVisible {
-                GoToLineView()
-                    .padding(.top, Spacing.md)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+            ZStack(alignment: .top) {
+                if let tab = appState.activeTab {
+                    if tab.hasLoadError {
+                        FileLoadErrorView(tab: tab)
+                    } else {
+                        VStack(spacing: 0) {
+                            if appState.isFindReplaceVisible {
+                                FindReplaceView()
+                                    .padding(Spacing.sm)
+                            }
+                            EditorView(tab: tab)
+                        }
+                    }
+                } else {
+                    EmptyEditorView()
+                }
+
+                if appState.isGoToLineVisible {
+                    GoToLineView()
+                        .padding(.top, Spacing.md)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
+            .animation(.easeOut(duration: AnimationDuration.fast), value: appState.isGoToLineVisible)
+            .animation(.easeOut(duration: AnimationDuration.fast), value: appState.isFindReplaceVisible)
         }
-        .animation(.easeOut(duration: AnimationDuration.fast), value: appState.isGoToLineVisible)
     }
 }
 
