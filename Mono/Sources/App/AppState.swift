@@ -20,6 +20,13 @@ final class AppState {
     var isGoToLineVisible: Bool = false
     var goToLineNumber: Int?
 
+    var isQuickOpenVisible: Bool = false
+    var isProjectSearchVisible: Bool = false
+    var isSettingsVisible: Bool = false
+    var isFindReplaceVisible: Bool = false
+
+    private var tabHistory: [UUID] = []
+
     var currentError: AppError?
     var showErrorAlert: Bool = false
 
@@ -48,6 +55,7 @@ final class AppState {
 
         openTabs.append(tab)
         activeTabId = tab.id
+        recordTabVisit(tab.id)
     }
 
     func showError(_ error: AppError) {
@@ -176,5 +184,44 @@ final class AppState {
     func selectTab(at index: Int) {
         guard index >= 0, index < openTabs.count else { return }
         activeTabId = openTabs[index].id
+        recordTabVisit(openTabs[index].id)
+    }
+
+    func toggleQuickOpen() {
+        isQuickOpenVisible.toggle()
+    }
+
+    func toggleProjectSearch() {
+        isProjectSearchVisible.toggle()
+    }
+
+    func toggleSettings() {
+        isSettingsVisible.toggle()
+    }
+
+    func toggleFindReplace() {
+        isFindReplaceVisible.toggle()
+    }
+
+    func recordTabVisit(_ id: UUID) {
+        tabHistory.removeAll { $0 == id }
+        tabHistory.insert(id, at: 0)
+        if tabHistory.count > 20 {
+            tabHistory.removeLast()
+        }
+    }
+
+    func cycleToNextRecentTab() {
+        guard openTabs.count > 1 else { return }
+        let validHistory = tabHistory.filter { id in openTabs.contains { $0.id == id } }
+        guard validHistory.count > 1,
+              let currentIndex = validHistory.firstIndex(of: activeTabId ?? UUID()) else {
+            if let next = openTabs.first(where: { $0.id != activeTabId }) {
+                activeTabId = next.id
+            }
+            return
+        }
+        let nextIndex = (currentIndex + 1) % validHistory.count
+        activeTabId = validHistory[nextIndex]
     }
 }
