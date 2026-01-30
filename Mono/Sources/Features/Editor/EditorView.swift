@@ -1,63 +1,109 @@
 import SwiftUI
+import AppKit
 
-struct EditorView: NSViewRepresentable {
+struct EditorView: NSViewControllerRepresentable {
     @Environment(AppState.self) private var appState
     let tab: EditorTab
     private let settings = SettingsService.shared
 
-    func makeNSView(context: Context) -> MonoTextView {
-        let textView = MonoTextView(frame: .zero)
-        context.coordinator.setupCallbacks(for: textView)
-        return textView
+    func makeNSViewController(context: Context) -> EditorViewController {
+        let controller = EditorViewController()
+        context.coordinator.viewController = controller
+        context.coordinator.setupCallbacks(for: controller.monoTextView)
+        context.coordinator.lastKnownContent = tab.content
+        controller.monoTextView.configure(for: Language.from(extension: tab.fileExtension))
+        controller.monoTextView.text = tab.content
+        return controller
     }
 
-    func updateNSView(_ nsView: MonoTextView, context: Context) {
+    func updateNSViewController(_ controller: EditorViewController, context: Context) {
         let tabChanged = context.coordinator.currentTabId != tab.id
 
         guard !context.coordinator.isUpdating else { return }
         context.coordinator.isUpdating = true
         defer { context.coordinator.isUpdating = false }
 
+        let textView = controller.monoTextView
+
         if tabChanged {
             context.coordinator.currentTabId = tab.id
             context.coordinator.lastKnownContent = tab.content
-            nsView.configure(for: Language.from(extension: tab.fileExtension))
-            nsView.text = tab.content
+            textView.configure(for: Language.from(extension: tab.fileExtension))
+            textView.text = tab.content
         } else if context.coordinator.lastKnownContent != tab.content {
             context.coordinator.lastKnownContent = tab.content
-            nsView.text = tab.content
+            textView.text = tab.content
         }
 
         if appState.isFindBarVisible {
-            nsView.showFindBar()
+            textView.showFindBar()
         }
 
         if let line = appState.goToLineNumber {
-            nsView.goToLine(line)
+            let maxLine = textView.lineCount
+            let targetLine = min(line, maxLine)
+            textView.goToLine(targetLine)
             DispatchQueue.main.async {
                 appState.goToLineNumber = nil
             }
         }
 
-        nsView.updateFontSize(settings.editorFontSize)
+        textView.updateFontSize(settings.editorFontSize)
+
+        if let action = appState.findReplaceAction {
+            DispatchQueue.main.async {
+                appState.findReplaceAction = nil
+            }
+            switch action {
+            case .find:
+                let count = textView.findMatches(for: appState.findQuery)
+                let currentMatch = count > 0 ? 1 : 0
+                if count > 0 {
+                    _ = textView.findNext(for: appState.findQuery)
+                }
+                DispatchQueue.main.async {
+                    appState.updateFindResults(matchCount: count, currentMatch: currentMatch)
+                }
+            case .findNext:
+                if textView.findNext(for: appState.findQuery) {
+                    let current = min(appState.findCurrentMatch + 1, appState.findMatchCount)
+                    let nextMatch = current > appState.findMatchCount ? 1 : current
+                    DispatchQueue.main.async {
+                        appState.findCurrentMatch = nextMatch
+                    }
+                }
+            case .replace:
+                textView.replaceCurrent(find: appState.findQuery, replace: appState.replaceQuery)
+                let count = textView.findMatches(for: appState.findQuery)
+                DispatchQueue.main.async {
+                    appState.updateFindResults(matchCount: count, currentMatch: min(appState.findCurrentMatch, count))
+                }
+            case .replaceAll:
+                _ = textView.replaceAll(find: appState.findQuery, replace: appState.replaceQuery)
+                DispatchQueue.main.async {
+                    appState.updateFindResults(matchCount: 0, currentMatch: 0)
+                }
+            }
+        }
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(appState: appState, tabId: tab.id)
     }
 
+    @MainActor
     class Coordinator {
         let appState: AppState
         var currentTabId: UUID
         var lastKnownContent: String = ""
         var isUpdating: Bool = false
+        weak var viewController: EditorViewController?
 
         init(appState: AppState, tabId: UUID) {
             self.appState = appState
             self.currentTabId = tabId
         }
 
-        @MainActor
         func setupCallbacks(for textView: MonoTextView) {
             textView.onTextChange = { [weak self] newContent in
                 guard let self else { return }
@@ -74,7 +120,6 @@ struct EditorView: NSViewRepresentable {
             }
         }
 
-        @MainActor
         func updateTab(content: String) {
             guard let index = appState.openTabs.firstIndex(where: { $0.id == currentTabId }) else { return }
             if appState.openTabs[index].content != content {
@@ -82,5 +127,19 @@ struct EditorView: NSViewRepresentable {
                 appState.openTabs[index].isModified = true
             }
         }
+    }
+}
+
+// MARK: - EditorViewController
+
+final class EditorViewController: NSViewController {
+    let monoTextView = MonoTextView(frame: .zero)
+
+    override func loadView() {
+        view = monoTextView
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
     }
 }
