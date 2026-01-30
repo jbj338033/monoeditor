@@ -3,6 +3,7 @@ import SwiftUI
 struct EditorView: NSViewRepresentable {
     @Environment(AppState.self) private var appState
     let tab: EditorTab
+    private let settings = SettingsService.shared
 
     func makeNSView(context: Context) -> MonoTextView {
         let textView = MonoTextView(frame: .zero)
@@ -30,6 +31,15 @@ struct EditorView: NSViewRepresentable {
         if appState.isFindBarVisible {
             nsView.showFindBar()
         }
+
+        if let line = appState.goToLineNumber {
+            nsView.goToLine(line)
+            DispatchQueue.main.async {
+                appState.goToLineNumber = nil
+            }
+        }
+
+        nsView.updateFontSize(settings.editorFontSize)
     }
 
     func makeCoordinator() -> Coordinator {
