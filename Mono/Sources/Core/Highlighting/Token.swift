@@ -1,71 +1,47 @@
 import AppKit
 
-// MARK: - Token Type
-
 enum TokenType: Sendable {
-    // Comments
     case comment
     case commentDoc
-
-    // Strings
     case string
     case stringEscape
     case stringInterpolation
-
-    // Literals
     case number
     case boolean
     case `nil`
-
-    // Keywords
     case keyword
-    case keywordDeclaration  // func, class, struct, etc.
-    case keywordControl      // if, else, for, while, etc.
-    case keywordOperator     // is, as, in, etc.
-    case keywordModifier     // public, private, static, etc.
-
-    // Identifiers
+    case keywordDeclaration
+    case keywordControl
+    case keywordOperator
+    case keywordModifier
     case type
     case function
     case property
     case variable
     case parameter
-
-    // Operators & Punctuation
     case `operator`
     case punctuation
-    case delimiter           // ( ) [ ] { }
+    case delimiter
 
-    // Preprocessor / Attributes
-    case attribute           // @MainActor, @Observable
-    case preprocessor        // #if, #endif
+    case attribute
+    case preprocessor
 
-    // Markup (HTML, XML)
     case tag
     case tagAttribute
 
-    // Plain text
     case plain
     case whitespace
     case newline
 }
 
-// MARK: - Token
-
 struct Token: Sendable {
     let type: TokenType
     let range: Range<String.Index>
-
-    var nsRange: NSRange {
-        NSRange(range, in: "")  // Placeholder, actual string needed
-    }
 
     func nsRange(in string: String) -> NSRange {
         NSRange(range, in: string)
     }
 }
-
-// MARK: - Token Type Colors
 
 extension TokenType {
     var color: NSColor {
