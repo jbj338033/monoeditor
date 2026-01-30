@@ -25,6 +25,18 @@ enum Language: String, CaseIterable, Sendable {
     case shell
     case dockerfile
 
+    var lineCommentPrefix: String? {
+        switch self {
+        case .swift, .javascript, .typescript, .rust, .go, .java, .kotlin,
+             .c, .cpp, .csharp, .php, .scss, .sql:
+            return "//"
+        case .python, .ruby, .shell, .yaml:
+            return "#"
+        case .html, .xml, .markdown, .css, .json, .dockerfile:
+            return nil
+        }
+    }
+
     var displayName: String {
         switch self {
         case .swift: "Swift"
