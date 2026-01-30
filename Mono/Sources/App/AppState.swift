@@ -17,6 +17,8 @@ final class AppState {
 
     var isFindBarVisible: Bool = false
     var shouldTriggerNewFile: Bool = false
+    var isGoToLineVisible: Bool = false
+    var goToLineNumber: Int?
 
     var currentError: AppError?
     var showErrorAlert: Bool = false
@@ -53,11 +55,57 @@ final class AppState {
         showErrorAlert = true
     }
 
-    func closeTab(_ id: UUID) {
+    func closeTab(_ id: UUID, force: Bool = false) {
+        guard let tab = openTabs.first(where: { $0.id == id }) else { return }
+
+        if tab.isModified && !force {
+            showSaveConfirmation(for: tab)
+            return
+        }
+
+        performCloseTab(id)
+    }
+
+    private func performCloseTab(_ id: UUID) {
         openTabs.removeAll { $0.id == id }
         if activeTabId == id {
             activeTabId = openTabs.last?.id
         }
+    }
+
+    private func showSaveConfirmation(for tab: EditorTab) {
+        let alert = NSAlert()
+        alert.messageText = "Do you want to save changes to \"\(tab.name)\"?"
+        alert.informativeText = "Your changes will be lost if you don't save them."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Don't Save")
+        alert.addButton(withTitle: "Cancel")
+
+        let response = alert.runModal()
+
+        switch response {
+        case .alertFirstButtonReturn:
+            Task {
+                do {
+                    try await saveTab(id: tab.id)
+                    performCloseTab(tab.id)
+                } catch {
+                    showError(.fileLoadFailed(url: tab.url, reason: error.localizedDescription))
+                }
+            }
+        case .alertSecondButtonReturn:
+            performCloseTab(tab.id)
+        default:
+            break
+        }
+    }
+
+    private func saveTab(id: UUID) async throws {
+        guard let index = openTabs.firstIndex(where: { $0.id == id }) else { return }
+        let tab = openTabs[index]
+        try await fileService.writeFile(tab.content, to: tab.url)
+        openTabs[index].isModified = false
     }
 
     func closeAllTabs() {
@@ -111,5 +159,22 @@ final class AppState {
     func triggerNewFile() {
         guard currentProject != nil else { return }
         shouldTriggerNewFile = true
+    }
+
+    func toggleGoToLine() {
+        isGoToLineVisible.toggle()
+        if !isGoToLineVisible {
+            goToLineNumber = nil
+        }
+    }
+
+    func goToLine(_ line: Int) {
+        goToLineNumber = line
+        isGoToLineVisible = false
+    }
+
+    func selectTab(at index: Int) {
+        guard index >= 0, index < openTabs.count else { return }
+        activeTabId = openTabs[index].id
     }
 }
