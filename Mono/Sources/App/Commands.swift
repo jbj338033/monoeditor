@@ -88,11 +88,45 @@ struct MonoCommands: Commands {
             .keyboardShortcut("f", modifiers: [.command])
             .disabled(appState.activeTab == nil)
 
+            Button("Find and Replace...") {
+                appState.toggleFindReplace()
+            }
+            .keyboardShortcut("h", modifiers: [.command])
+            .disabled(appState.activeTab == nil)
+
             Button("Go to Line...") {
                 appState.toggleGoToLine()
             }
             .keyboardShortcut("g", modifiers: [.command])
             .disabled(appState.activeTab == nil)
+
+            Divider()
+
+            Button("Quick Open...") {
+                appState.toggleQuickOpen()
+            }
+            .keyboardShortcut("p", modifiers: [.command])
+            .disabled(appState.currentProject == nil)
+
+            Button("Search in Project...") {
+                appState.toggleProjectSearch()
+            }
+            .keyboardShortcut("f", modifiers: [.command, .shift])
+            .disabled(appState.currentProject == nil)
+        }
+
+        CommandGroup(after: .appSettings) {
+            Button("Settings...") {
+                appState.toggleSettings()
+            }
+            .keyboardShortcut(",", modifiers: [.command])
+        }
+
+        CommandMenu("Tab") {
+            Button("Next Recent Tab") {
+                appState.cycleToNextRecentTab()
+            }
+            .keyboardShortcut("\t", modifiers: [.control])
         }
     }
 
