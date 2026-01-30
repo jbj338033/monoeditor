@@ -71,21 +71,19 @@ final class MonoTextView: NSView {
     }
 
     private func setupTextView() {
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = true
+
         textView.isEditable = true
         textView.isSelectable = true
         textView.isRichText = false
         textView.allowsUndo = true
         textView.usesFindBar = true
-
-        textView.autoresizingMask = [.width]
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-
-        textView.textContainer?.containerSize = NSSize(
-            width: scrollView.contentSize.width,
-            height: CGFloat.greatestFiniteMagnitude
-        )
-        textView.textContainer?.widthTracksTextView = true
 
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -155,6 +153,87 @@ final class MonoTextView: NSView {
     func updateFontSize(_ size: EditorFontSize) {
         textView.font = size.font
         gutterView.needsDisplay = true
+    }
+
+    // MARK: - Find/Replace
+
+    func findMatches(for query: String) -> Int {
+        guard !query.isEmpty else { return 0 }
+        let text = textView.string as NSString
+        var count = 0
+        var searchRange = NSRange(location: 0, length: text.length)
+
+        while searchRange.location < text.length {
+            let foundRange = text.range(of: query, options: .caseInsensitive, range: searchRange)
+            if foundRange.location != NSNotFound {
+                count += 1
+                searchRange.location = foundRange.location + foundRange.length
+                searchRange.length = text.length - searchRange.location
+            } else {
+                break
+            }
+        }
+        return count
+    }
+
+    func findNext(for query: String) -> Bool {
+        guard !query.isEmpty else { return false }
+        let text = textView.string as NSString
+        let currentLocation = textView.selectedRange().location + textView.selectedRange().length
+        var searchRange = NSRange(location: currentLocation, length: text.length - currentLocation)
+
+        var foundRange = text.range(of: query, options: .caseInsensitive, range: searchRange)
+        if foundRange.location == NSNotFound {
+            searchRange = NSRange(location: 0, length: currentLocation)
+            foundRange = text.range(of: query, options: .caseInsensitive, range: searchRange)
+        }
+
+        if foundRange.location != NSNotFound {
+            textView.setSelectedRange(foundRange)
+            textView.scrollRangeToVisible(foundRange)
+            return true
+        }
+        return false
+    }
+
+    func replaceCurrent(find: String, replace: String) {
+        let selectedRange = textView.selectedRange()
+        let selectedText = (textView.string as NSString).substring(with: selectedRange)
+
+        if selectedText.lowercased() == find.lowercased() {
+            textView.insertText(replace, replacementRange: selectedRange)
+            _ = findNext(for: find)
+        } else {
+            _ = findNext(for: find)
+        }
+    }
+
+    func replaceAll(find: String, replace: String) -> Int {
+        guard !find.isEmpty else { return 0 }
+        var count = 0
+        var mutableText = textView.string
+        var searchRange = mutableText.startIndex..<mutableText.endIndex
+
+        while let range = mutableText.range(of: find, options: .caseInsensitive, range: searchRange) {
+            mutableText.replaceSubrange(range, with: replace)
+            count += 1
+            let newStart = mutableText.index(range.lowerBound, offsetBy: replace.count, limitedBy: mutableText.endIndex) ?? mutableText.endIndex
+            searchRange = newStart..<mutableText.endIndex
+        }
+
+        if count > 0 {
+            textView.string = mutableText
+            onTextChange?(mutableText)
+            gutterView.needsDisplay = true
+            highlighter.textDidChange()
+        }
+        return count
+    }
+
+    var lineCount: Int {
+        let text = textView.string as NSString
+        guard text.length > 0 else { return 1 }
+        return text.components(separatedBy: "\n").count
     }
 
     override func layout() {
@@ -238,13 +317,17 @@ private final class GutterView: NSView {
 
     override var isFlipped: Bool { true }
 
+    override func resetCursorRects() {
+        discardCursorRects()
+        addCursorRect(bounds, cursor: .arrow)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         ThemeColors.NS.backgroundSecondary.setFill()
         dirtyRect.fill()
 
         guard let textView = textView,
-              let layoutManager = textView.layoutManager,
-              let textContainer = textView.textContainer,
+              let textLayoutManager = textView.textLayoutManager,
               let scrollView = scrollView else {
             return
         }
@@ -256,44 +339,35 @@ private final class GutterView: NSView {
         ]
 
         let visibleRect = scrollView.documentVisibleRect
-        let glyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: textContainer)
-        let charRange = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
-
         let text = textView.string as NSString
         guard text.length > 0 else { return }
 
-        guard charRange.location >= 0,
-              charRange.location <= text.length,
-              NSMaxRange(charRange) <= text.length else {
-            return
-        }
-
         var lineNumber = 1
-        if charRange.location > 0 && charRange.location <= text.length {
-            lineNumber = text.substring(to: charRange.location).components(separatedBy: "\n").count
-        }
 
-        var index = charRange.location
-        let maxIndex = min(NSMaxRange(charRange), text.length)
+        textLayoutManager.enumerateTextLayoutFragments(
+            from: textLayoutManager.documentRange.location,
+            options: [.ensuresLayout]
+        ) { fragment in
+            let fragmentFrame = fragment.layoutFragmentFrame
 
-        while index < maxIndex {
-            let lineRange = text.lineRange(for: NSRange(location: index, length: 0))
+            if fragmentFrame.maxY < visibleRect.minY {
+                lineNumber += 1
+                return true
+            }
 
-            guard NSMaxRange(lineRange) > index else { break }
-
-            let glyphRange = layoutManager.glyphRange(forCharacterRange: lineRange, actualCharacterRange: nil)
-            var lineRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-            lineRect.origin.y -= visibleRect.origin.y
+            if fragmentFrame.minY > visibleRect.maxY {
+                return false
+            }
 
             let lineString = "\(lineNumber)"
             let size = lineString.size(withAttributes: attrs)
-            let x = bounds.width - size.width - Spacing.sm
-            let y = lineRect.origin.y + (lineRect.height - size.height) / 2
+            let x = self.bounds.width - size.width - Spacing.sm
+            let y = fragmentFrame.origin.y - visibleRect.origin.y + (fragmentFrame.height - size.height) / 2
 
             lineString.draw(at: NSPoint(x: x, y: y), withAttributes: attrs)
 
             lineNumber += 1
-            index = NSMaxRange(lineRange)
+            return true
         }
     }
 }
@@ -311,27 +385,48 @@ private final class HighlightingTextView: NSTextView {
     }
 
     private func drawCurrentLineHighlight() {
-        guard let layoutManager = layoutManager,
-              let textContainer = textContainer else { return }
+        guard let textLayoutManager = textLayoutManager else { return }
 
         let selectedRange = selectedRange()
         let text = string as NSString
 
         guard text.length > 0, selectedRange.location <= text.length else { return }
 
-        let lineRange = text.lineRange(for: NSRange(location: selectedRange.location, length: 0))
-        let glyphRange = layoutManager.glyphRange(forCharacterRange: lineRange, actualCharacterRange: nil)
-        var lineRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-        lineRect.origin.x = 0
-        lineRect.size.width = bounds.width
+        let cursorLocation = selectedRange.location
+        var lineRect: NSRect?
 
-        ThemeColors.NS.currentLine.setFill()
-        lineRect.fill()
+        textLayoutManager.enumerateTextLayoutFragments(
+            from: textLayoutManager.documentRange.location,
+            options: [.ensuresLayout]
+        ) { fragment in
+            let textRange = fragment.rangeInElement
+
+            let startOffset = textLayoutManager.offset(
+                from: textLayoutManager.documentRange.location,
+                to: textRange.location
+            )
+            let endOffset = startOffset + (textLayoutManager.offset(
+                from: textRange.location,
+                to: textRange.endLocation
+            ))
+
+            if cursorLocation >= startOffset && cursorLocation <= endOffset {
+                lineRect = fragment.layoutFragmentFrame
+                return false
+            }
+            return true
+        }
+
+        if var rect = lineRect {
+            rect.origin.x = 0
+            rect.size.width = bounds.width
+            ThemeColors.NS.currentLine.setFill()
+            rect.fill()
+        }
     }
 
     private func drawIndentGuides(in rect: NSRect) {
-        guard let layoutManager = layoutManager,
-              let textContainer = textContainer,
+        guard let textLayoutManager = textLayoutManager,
               let font = font else { return }
 
         let tabWidth: CGFloat = 4
@@ -345,12 +440,26 @@ private final class HighlightingTextView: NSTextView {
         path.lineWidth = 1
 
         let text = string as NSString
-        let visibleGlyphRange = layoutManager.glyphRange(forBoundingRect: rect, in: textContainer)
-        let visibleCharRange = layoutManager.characterRange(forGlyphRange: visibleGlyphRange, actualGlyphRange: nil)
+        guard text.length > 0 else { return }
 
-        var index = visibleCharRange.location
-        while index < NSMaxRange(visibleCharRange) && index < text.length {
-            let lineRange = text.lineRange(for: NSRange(location: index, length: 0))
+        textLayoutManager.enumerateTextLayoutFragments(
+            from: textLayoutManager.documentRange.location,
+            options: [.ensuresLayout]
+        ) { fragment in
+            let fragmentFrame = fragment.layoutFragmentFrame
+
+            guard fragmentFrame.maxY >= rect.minY,
+                  fragmentFrame.minY <= rect.maxY else {
+                return fragmentFrame.minY <= rect.maxY
+            }
+
+            let textRange = fragment.rangeInElement
+            let startOffset = textLayoutManager.offset(
+                from: textLayoutManager.documentRange.location,
+                to: textRange.location
+            )
+            let safeOffset = max(0, min(startOffset, text.length - 1))
+            let lineRange = text.lineRange(for: NSRange(location: safeOffset, length: 0))
             let line = text.substring(with: lineRange)
 
             var indentLevel = 0
@@ -360,21 +469,16 @@ private final class HighlightingTextView: NSTextView {
                 else { break }
             }
 
-            let glyphRange = layoutManager.glyphRange(forCharacterRange: lineRange, actualCharacterRange: nil)
-            let lineRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-
             let guides = indentLevel / Int(tabWidth)
-            guard guides > 1 else {
-                index = NSMaxRange(lineRange)
-                continue
-            }
-            for i in 1..<guides {
-                let x = CGFloat(i) * indentWidth + textContainerInset.width
-                path.move(to: NSPoint(x: x, y: lineRect.origin.y))
-                path.line(to: NSPoint(x: x, y: lineRect.origin.y + lineRect.height))
+            if guides >= 1 {
+                for i in 1...guides {
+                    let x = CGFloat(i) * indentWidth + self.textContainerInset.width
+                    path.move(to: NSPoint(x: x, y: fragmentFrame.origin.y))
+                    path.line(to: NSPoint(x: x, y: fragmentFrame.origin.y + fragmentFrame.height))
+                }
             }
 
-            index = NSMaxRange(lineRange)
+            return true
         }
 
         path.stroke()
