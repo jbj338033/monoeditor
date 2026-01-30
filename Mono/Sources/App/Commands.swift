@@ -53,6 +53,32 @@ struct MonoCommands: Commands {
                 }
             }
             .keyboardShortcut("j", modifiers: [.command])
+
+            Divider()
+
+            ForEach(1...9, id: \.self) { number in
+                Button("Tab \(number)") {
+                    appState.selectTab(at: number - 1)
+                }
+                .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: [.command])
+            }
+
+            Divider()
+
+            Button("Increase Font Size") {
+                SettingsService.shared.increaseFontSize()
+            }
+            .keyboardShortcut("+", modifiers: [.command])
+
+            Button("Decrease Font Size") {
+                SettingsService.shared.decreaseFontSize()
+            }
+            .keyboardShortcut("-", modifiers: [.command])
+
+            Button("Reset Font Size") {
+                SettingsService.shared.resetFontSize()
+            }
+            .keyboardShortcut("0", modifiers: [.command])
         }
 
         CommandGroup(replacing: .textEditing) {
@@ -60,6 +86,12 @@ struct MonoCommands: Commands {
                 appState.toggleFindBar()
             }
             .keyboardShortcut("f", modifiers: [.command])
+            .disabled(appState.activeTab == nil)
+
+            Button("Go to Line...") {
+                appState.toggleGoToLine()
+            }
+            .keyboardShortcut("g", modifiers: [.command])
             .disabled(appState.activeTab == nil)
         }
     }
