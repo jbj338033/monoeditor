@@ -45,6 +45,24 @@ final class SettingsService {
         wordWrap = defaults.object(forKey: Keys.wordWrap) as? Bool ?? false
     }
 
+    func increaseFontSize() {
+        let allSizes = EditorFontSize.allCases
+        guard let currentIndex = allSizes.firstIndex(of: editorFontSize),
+              currentIndex < allSizes.count - 1 else { return }
+        editorFontSize = allSizes[currentIndex + 1]
+    }
+
+    func decreaseFontSize() {
+        let allSizes = EditorFontSize.allCases
+        guard let currentIndex = allSizes.firstIndex(of: editorFontSize),
+              currentIndex > 0 else { return }
+        editorFontSize = allSizes[currentIndex - 1]
+    }
+
+    func resetFontSize() {
+        editorFontSize = .medium
+    }
+
     private enum Keys {
         static let editorFontSize = "editorFontSize"
         static let tabSize = "tabSize"
