@@ -6,11 +6,18 @@ struct TabBarView: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Spacing.xs) {
-                ForEach(appState.openTabs) { tab in
-                    TabItemView(
-                        tab: tab,
-                        isActive: tab.id == appState.activeTabId
-                    )
+                if appState.openTabs.isEmpty {
+                    Text("No open files")
+                        .font(Typography.uiSmall)
+                        .foregroundStyle(ThemeColors.textMuted)
+                        .padding(.horizontal, Spacing.md)
+                } else {
+                    ForEach(appState.openTabs) { tab in
+                        TabItemView(
+                            tab: tab,
+                            isActive: tab.id == appState.activeTabId
+                        )
+                    }
                 }
             }
             .padding(.horizontal, Spacing.sm)
@@ -23,6 +30,8 @@ struct TabBarView: View {
                 .fill(ThemeColors.textMuted.opacity(0.3))
                 .frame(height: 1)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Open tabs")
     }
 }
 
@@ -46,16 +55,16 @@ struct TabItemView: View {
                     .foregroundStyle(isActive ? ThemeColors.textPrimary : ThemeColors.textSecondary)
                     .lineLimit(1)
 
-                if tab.isModified {
+                ZStack {
                     Circle()
                         .fill(ThemeColors.modified)
                         .frame(width: 6, height: 6)
-                } else if isHovering {
+                        .opacity(tab.isModified ? 1 : 0)
+
                     closeButton
-                } else {
-                    Spacer()
-                        .frame(width: Dimensions.tabCloseButtonSize)
+                        .opacity(!tab.isModified && isHovering ? 1 : 0)
                 }
+                .frame(width: Dimensions.tabCloseButtonSize, height: Dimensions.tabCloseButtonSize)
             }
             .padding(.horizontal, Spacing.md)
             .padding(.vertical, Spacing.sm)
@@ -77,6 +86,10 @@ struct TabItemView: View {
             }
             Button("Close All") { appState.closeAllTabs() }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(tab.name)\(tab.isModified ? ", modified" : "")")
+        .accessibilityHint(isActive ? "Currently active" : "Double tap to open")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     private var closeButton: some View {
@@ -90,5 +103,6 @@ struct TabItemView: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Close \(tab.name)")
     }
 }

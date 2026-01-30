@@ -12,7 +12,7 @@ struct StatusBarView: View {
 
                 StatusDivider()
 
-                Text("Line 1, Column 1")
+                Text("Line \(appState.cursorLine), Column \(appState.cursorColumn)")
                     .font(Typography.statusBar)
                     .foregroundStyle(ThemeColors.textSecondary)
 
@@ -42,25 +42,7 @@ struct StatusBarView: View {
     }
 
     private func languageLabel(for ext: String) -> String {
-        switch ext.lowercased() {
-        case "swift": "Swift"
-        case "js", "mjs", "cjs": "JavaScript"
-        case "jsx": "JavaScript React"
-        case "ts": "TypeScript"
-        case "tsx": "TypeScript React"
-        case "py": "Python"
-        case "rs": "Rust"
-        case "html", "htm": "HTML"
-        case "css": "CSS"
-        case "scss": "SCSS"
-        case "json": "JSON"
-        case "md", "markdown": "Markdown"
-        case "yaml", "yml": "YAML"
-        case "xml": "XML"
-        case "sh", "bash", "zsh": "Shell"
-        case "txt": "Plain Text"
-        default: ext.uppercased()
-        }
+        Language.from(extension: ext)?.displayName ?? (ext.isEmpty ? "Plain Text" : ext.uppercased())
     }
 }
 
