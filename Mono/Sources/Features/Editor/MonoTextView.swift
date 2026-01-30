@@ -364,6 +364,10 @@ private final class HighlightingTextView: NSTextView {
             let lineRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
 
             let guides = indentLevel / Int(tabWidth)
+            guard guides > 1 else {
+                index = NSMaxRange(lineRange)
+                continue
+            }
             for i in 1..<guides {
                 let x = CGFloat(i) * indentWidth + textContainerInset.width
                 path.move(to: NSPoint(x: x, y: lineRect.origin.y))
