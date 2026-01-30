@@ -48,7 +48,8 @@ final class TerminalState {
     var currentDirectory: URL?
 
     init(shell: Shell? = nil, directory: URL? = nil) {
-        self.selectedShell = shell ?? Shell.defaultShell
+        let preferredShell = shell ?? Shell.defaultShell
+        self.selectedShell = preferredShell.isAvailable ? preferredShell : (Shell.availableShells.first ?? .zsh)
         self.terminalId = UUID()
         self.currentDirectory = directory
     }
@@ -58,7 +59,14 @@ final class TerminalState {
     }
 
     func changeShell(to shell: Shell) {
+        guard shell.isAvailable else { return }
         selectedShell = shell
         restart()
+    }
+
+    func validateCurrentShell() {
+        if !selectedShell.isAvailable {
+            selectedShell = Shell.availableShells.first ?? .zsh
+        }
     }
 }
