@@ -90,8 +90,8 @@ enum LanguageRegistry {
 }
 
 enum PlainTextLang: LanguageDefinition {
-    static let id: Language = .swift
-    static let extensions: Set<String> = []
+    static let id: Language = .plainText
+    static let extensions: Set<String> = ["txt", "log", "text"]
 
     static func tokenize(_ source: String) -> [Token] {
         guard !source.isEmpty else { return [] }
