@@ -7,6 +7,8 @@ final class MonoTextView: NSView {
     private let textView: NSTextView
     private let highlighter: SyntaxHighlighter
 
+    private nonisolated(unsafe) var boundsObserver: NSObjectProtocol?
+
     var text: String {
         get { textView.string }
         set {
@@ -17,6 +19,7 @@ final class MonoTextView: NSView {
     }
 
     var onTextChange: ((String) -> Void)?
+    var onCursorChange: ((Int, Int) -> Void)?
 
     override init(frame frameRect: NSRect) {
         gutterView = GutterView()
@@ -104,7 +107,7 @@ final class MonoTextView: NSView {
         gutterView.scrollView = scrollView
 
         scrollView.contentView.postsBoundsChangedNotifications = true
-        NotificationCenter.default.addObserver(
+        boundsObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification,
             object: scrollView.contentView,
             queue: .main
@@ -115,8 +118,18 @@ final class MonoTextView: NSView {
         }
     }
 
+    deinit {
+        if let observer = boundsObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
     func configure(for language: Language?) {
         highlighter.configure(textView: textView, language: language)
+    }
+
+    func showFindBar() {
+        textView.performTextFinderAction(NSTextFinder.Action.showFindInterface)
     }
 
     override func layout() {
@@ -134,9 +147,35 @@ extension MonoTextView: NSTextViewDelegate {
         gutterView.needsDisplay = true
         highlighter.textDidChange()
     }
-}
 
-// MARK: - GutterView
+    func textViewDidChangeSelection(_ notification: Notification) {
+        let (line, column) = calculateCursorPosition()
+        onCursorChange?(line, column)
+    }
+
+    private func calculateCursorPosition() -> (line: Int, column: Int) {
+        let selectedRange = textView.selectedRange()
+        let text = textView.string as NSString
+
+        guard text.length > 0,
+              selectedRange.location >= 0,
+              selectedRange.location <= text.length else {
+            return (1, 1)
+        }
+
+        let safeLocation = min(selectedRange.location, text.length)
+        let lineRange = text.lineRange(for: NSRange(location: safeLocation, length: 0))
+
+        guard lineRange.location <= text.length else {
+            return (1, 1)
+        }
+
+        let line = text.substring(to: lineRange.location).components(separatedBy: "\n").count
+        let column = safeLocation - lineRange.location + 1
+
+        return (max(1, line), max(1, column))
+    }
+}
 
 private final class GutterView: NSView {
     weak var textView: NSTextView?
@@ -168,14 +207,25 @@ private final class GutterView: NSView {
         let text = textView.string as NSString
         guard text.length > 0 else { return }
 
+        guard charRange.location >= 0,
+              charRange.location <= text.length,
+              NSMaxRange(charRange) <= text.length else {
+            return
+        }
+
         var lineNumber = 1
-        if charRange.location > 0 {
+        if charRange.location > 0 && charRange.location <= text.length {
             lineNumber = text.substring(to: charRange.location).components(separatedBy: "\n").count
         }
 
         var index = charRange.location
-        while index < NSMaxRange(charRange) {
+        let maxIndex = min(NSMaxRange(charRange), text.length)
+
+        while index < maxIndex {
             let lineRange = text.lineRange(for: NSRange(location: index, length: 0))
+
+            guard NSMaxRange(lineRange) > index else { break }
+
             let glyphRange = layoutManager.glyphRange(forCharacterRange: lineRange, actualCharacterRange: nil)
             var lineRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
             lineRect.origin.y -= visibleRect.origin.y

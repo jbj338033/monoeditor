@@ -5,12 +5,18 @@ struct EditorTab: Identifiable, Hashable {
     let url: URL
     var isModified: Bool
     var content: String
+    var loadError: String?
 
     init(url: URL) {
         self.id = UUID()
         self.url = url
         self.isModified = false
         self.content = ""
+        self.loadError = nil
+    }
+
+    var hasLoadError: Bool {
+        loadError != nil
     }
 
     var name: String {
