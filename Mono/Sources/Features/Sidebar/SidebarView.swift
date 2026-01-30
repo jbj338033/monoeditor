@@ -6,11 +6,15 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SidebarHeader()
+            SidebarHeader(fileTree: fileTree)
 
             if let tree = fileTree {
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        if let pending = tree.pendingItem, pending.parentURL == tree.rootURL {
+                            PendingItemRow(model: tree, depth: 0)
+                        }
+
                         ForEach(tree.rootItems) { item in
                             FileTreeItemView(item: item, model: tree, depth: 0)
                         }
@@ -34,6 +38,12 @@ struct SidebarView: View {
                 fileTree = nil
             }
         }
+        .onChange(of: appState.shouldTriggerNewFile) { _, shouldTrigger in
+            if shouldTrigger, let project = appState.currentProject {
+                appState.shouldTriggerNewFile = false
+                fileTree?.startCreatingFile(in: project)
+            }
+        }
     }
 
     private func loadFileTree(at url: URL) {
@@ -47,6 +57,7 @@ struct SidebarView: View {
 
 struct SidebarHeader: View {
     @Environment(AppState.self) private var appState
+    let fileTree: FileTreeModel?
     @State private var isHovering = false
 
     var body: some View {
@@ -64,7 +75,7 @@ struct SidebarHeader: View {
             Spacer()
 
             Button {
-                // TODO: New file
+                createNewFile()
             } label: {
                 Image(systemName: Icons.newFile)
                     .font(.system(size: 12))
@@ -82,9 +93,15 @@ struct SidebarHeader: View {
                 }
             }
             .help("New File")
+            .disabled(appState.currentProject == nil)
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm)
         .background(ThemeColors.backgroundSecondary.opacity(0.3))
+    }
+
+    private func createNewFile() {
+        guard let project = appState.currentProject else { return }
+        fileTree?.startCreatingFile(in: project)
     }
 }
